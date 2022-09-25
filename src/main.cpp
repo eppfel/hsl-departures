@@ -6,6 +6,31 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <credentials.h>
+#include "time.h"
+#include "sntp.h"
+
+const char* ntpServer1 = "pool.ntp.org";
+const char* ntpServer2 = "time.nist.gov";
+
+const char* time_zone = "EET-2EEST,M3.5.0/3,M10.5.0/4";  // TimeZone rule for Europe/Helsinki including daylight adjustment rules (optional)
+
+void printLocalTime()
+{
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("No time available (yet)");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+}
+
+// Callback function (get's called when time adjusts via NTP)
+void timeavailable(struct timeval *t)
+{
+  Serial.println("Got time adjustment from NTP!");
+  printLocalTime();
+}
+
 
 TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
 
@@ -90,7 +115,10 @@ void updateDepartureTimes() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println();
+
+  sntp_set_time_sync_notification_cb( timeavailable );
+  sntp_servermode_dhcp(1);
+  configTzTime(time_zone, ntpServer1, ntpServer2);
 
   tft.init();
   tft.setRotation(1);
@@ -107,6 +135,7 @@ void setup() {
 void loop() {
   if (millis() > (lastUpdate + updateCycle*1000)) {
     lastUpdate = millis();
+    printLocalTime();
     updateDepartureTimes();
   }
 }
