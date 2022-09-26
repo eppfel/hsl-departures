@@ -5,10 +5,11 @@
 #include <WiFiMulti.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <credentials.h>
 #include "time.h"
 #include "sntp.h"
 #include <algorithm>
+
+#include <credentials.h>
 
 const char* ntpServer1 = "pool.ntp.org";
 const char* ntpServer2 = "time.nist.gov";
@@ -131,6 +132,9 @@ void setup() {
   tft.setTextSize(2);
   delay(10);
   wifiMulti.addAP(SSID, WIFI_PASSWORD);
+#ifdef SSID2
+  wifiMulti.addAP(SSID2, WIFI_PASSWORD2);
+#endif
 }
 
 void loop() {
