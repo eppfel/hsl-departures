@@ -68,7 +68,7 @@ void updateDepartureTimes() {
     http.addHeader("Content-Type",   "application/json");
 
     // send POST request
-    doc["query"] = "{ stop1: stop(id: \"HSL:2232238\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop2: stop(id: \"HSL:2232239\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop3: stop(id: \"HSL:2232211\") { name name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop4: stop(id: \"HSL:2232232\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } }";
+    doc["query"] = "{ stop1: stop(id: \"HSL:2232238\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop2: stop(id: \"HSL:2232239\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop3: stop(id: \"HSL:2232228\") { name name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop4: stop(id: \"HSL:2232232\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } }";
     doc["variables"] = nullptr;
     String payload; //= "{\"query\": \"{stops {name}}\" }";
     serializeJson(doc, payload);
