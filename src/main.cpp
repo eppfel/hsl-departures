@@ -22,12 +22,13 @@ const static int refreshCycle = 500;
 
 WiFiMulti wifiMulti;
 
-const static int updateCycle = 5;
+const static int updateCycle = 15;
 int lastUpdate = 0;
-#define NUM_STOPTIMES 6
+#define NUM_STOPTIMES 8
 struct stoptime_t
 {
   int stopId;
+  time_t day;
   int realtimeDeparture;
   const char* headsign;
   const char* route;
@@ -35,7 +36,10 @@ struct stoptime_t
 stoptime_t stoptimes[NUM_STOPTIMES];
 
 bool cmpfunc(stoptime_t a, stoptime_t b) { 
-  return a.realtimeDeparture < b.realtimeDeparture; 
+  if (a.day == b.day) {
+    return a.realtimeDeparture < b.realtimeDeparture;
+  }
+  return a.day < b.day;
 }
 
 int getLocalTimeOfTheDay()
@@ -91,6 +95,7 @@ void updateDepartureTimes() {
         stoptimes[i].realtimeDeparture = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["realtimeDeparture"];
         stoptimes[i].headsign = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["tripHeadsign"];
         stoptimes[i].route = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["routeShortName"];
+        stoptimes[i].day = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["serviceDay"];
         Serial.println(stopN);
         Serial.println(stoptimes[i].realtimeDeparture);
         Serial.println(stoptimes[i].headsign);
@@ -146,26 +151,30 @@ void loop() {
     lastRefresh = millis();
     if (stoptimes[0].realtimeDeparture > 0) {
       tft.setCursor(0,0);
+      tft.fillScreen(TFT_BLUE);
       struct tm timeinfo;
       if(!getLocalTime(&timeinfo)){
         Serial.println("No time available (yet)");
       }
       else {
         tft.println(&timeinfo, "%H:%M:%S");
-      }
-      for (size_t i = 0; i < 4; i++)
-      {
-        int timeUntilDeparture = stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay();
-        String departureTime;
-        if (timeUntilDeparture < 600) {
-          departureTime = (String)(int)(timeUntilDeparture / 60) + " min";
-        } else {
-          int hours = (int)(stoptimes[i].realtimeDeparture / 3600);
-          departureTime = (String) hours + ":" + (String)(int)((stoptimes[i].realtimeDeparture - hours * 3600) / 60);
+        for (size_t i = 0; i < 6; i++)
+        {
+          tm departureDay;
+          localtime_r(&stoptimes[i].day, &departureDay);
+          int timeUntilDeparture = stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay();
+          if (departureDay.tm_yday != timeinfo.tm_yday) timeUntilDeparture += 86400;
+          String departureTime;
+          if (timeUntilDeparture < 600) {
+            departureTime = (String)(int)(timeUntilDeparture / 60) + " min";
+          } else {
+            int hours = (int)(stoptimes[i].realtimeDeparture / 3600);
+            departureTime = (String) hours + ":" + (String)(int)((stoptimes[i].realtimeDeparture - hours * 3600) / 60);
+          }
+          tft.println(departureTime + " " + stoptimes[i].route + " " + stoptimes[i].headsign);
+          //tft.printf("%s %s\n", departureTime, stoptimes[i].route);
+          //tft.printf("%d: %s %s\n", stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay(), stoptimes[i].route, stoptimes[i].headsign); //unicode characters create problems
         }
-        tft.println(departureTime + " " + stoptimes[i].route + " " + stoptimes[i].headsign);
-        //tft.printf("%s %s\n", departureTime, stoptimes[i].route);
-        //tft.printf("%d: %s %s\n", stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay(), stoptimes[i].route, stoptimes[i].headsign); //unicode characters create problems
       }
     }
   }
