@@ -29,6 +29,7 @@ struct stoptime_t
   int stopId;
   int realtimeDeparture;
   const char* headsign;
+  const char* route;
 };
 stoptime_t stoptimes[NUM_STOPTIMES];
 
@@ -57,7 +58,7 @@ void updateDepartureTimes() {
   if((wifiMulti.run() == WL_CONNECTED)) {
 
     HTTPClient http;
-    StaticJsonDocument<800> doc;
+    StaticJsonDocument<2048> doc;
 
     //client.setCACert(root_ca);
     Serial.print("[HTTP] begin...\n");
@@ -67,7 +68,7 @@ void updateDepartureTimes() {
     http.addHeader("Content-Type",   "application/json");
 
     // send POST request
-    doc["query"] = "{\n stop1: stop(id: \"HSL:2232238\") {\n name\n stoptimesWithoutPatterns(numberOfDepartures: 2) {\n realtimeDeparture\n realtime\n headsign\n }\n }\n stop2: stop(id: \"HSL:2232239\") {\n name\n stoptimesWithoutPatterns(numberOfDepartures: 2) {\n realtimeDeparture\n realtime\n headsign\n }\n }\n stop3: stop(id: \"HSL:2232211\") {\n name\n stoptimesWithoutPatterns(numberOfDepartures: 2) {\n realtimeDeparture\n realtime\n headsign\n }\n }\n}\n";
+    doc["query"] = "{ stop1: stop(id: \"HSL:2232238\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop2: stop(id: \"HSL:2232239\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop3: stop(id: \"HSL:2232211\") { name name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop4: stop(id: \"HSL:2232232\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } }";
     doc["variables"] = nullptr;
     String payload; //= "{\"query\": \"{stops {name}}\" }";
     serializeJson(doc, payload);
@@ -87,10 +88,13 @@ void updateDepartureTimes() {
         snprintf(stopN, 6, "stop%d", stop);
         stoptimes[i].stopId = stop;
         stoptimes[i].realtimeDeparture = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["realtimeDeparture"];
-        stoptimes[i].headsign = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["headsign"];
+        stoptimes[i].headsign = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["tripHeadsign"];
+        stoptimes[i].route = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["routeShortName"];
         Serial.println(stopN);
         Serial.println(stoptimes[i].realtimeDeparture);
         Serial.println(stoptimes[i].headsign);
+        Serial.println(stoptimes[i].route);
+        //Serial.printf("%s: %s %s at %d\n",stopN, stoptimes[i].route, stoptimes[i].headsign, stoptimes[i].realtimeDeparture);
       }
       std::sort(std::begin(stoptimes), std::end(stoptimes), cmpfunc);
 
@@ -121,7 +125,7 @@ void setup() {
   tft.setRotation(1);
   tft.fillScreen(TFT_BLUE);
   tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE);
+  tft.setTextColor(TFT_WHITE, TFT_BLUE, true);
   tft.setCursor(0, 0);
   tft.setTextDatum(MC_DATUM);
   tft.setTextSize(2);
@@ -138,7 +142,6 @@ void loop() {
     lastRefresh = millis();
     if (stoptimes[0].realtimeDeparture > 0) {
       tft.setCursor(0,0);
-      tft.fillScreen(TFT_BLUE);
       struct tm timeinfo;
       if(!getLocalTime(&timeinfo)){
         Serial.println("No time available (yet)");
@@ -148,7 +151,17 @@ void loop() {
       }
       for (size_t i = 0; i < 4; i++)
       {
-        tft.printf("%d: %d\n", stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay(), stoptimes[i].stopId);
+        int timeUntilDeparture = stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay();
+        String departureTime;
+        if (timeUntilDeparture < 600) {
+          departureTime = (String)(int)(timeUntilDeparture / 60) + " min";
+        } else {
+          int hours = (int)(stoptimes[i].realtimeDeparture / 3600);
+          departureTime = (String) hours + ":" + (String)(int)((stoptimes[i].realtimeDeparture - hours * 3600) / 60);
+        }
+        tft.println(departureTime + " " + stoptimes[i].route + " " + stoptimes[i].headsign);
+        //tft.printf("%s %s\n", departureTime, stoptimes[i].route);
+        //tft.printf("%d: %s %s\n", stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay(), stoptimes[i].route, stoptimes[i].headsign); //unicode characters create problems
       }
     }
   }
