@@ -16,9 +16,13 @@ const char* ntpServer2 = "time.nist.gov";
 
 const char* time_zone = "EET-2EEST,M3.5.0/3,M10.5.0/4";  // TimeZone rule for Europe/Helsinki including daylight adjustment rules (optional)
 
-TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
+#define HSL_BLUE 0x0BDE
+#define MARGINS 6
+#define PADDING 5
+#include <hsl-bicycle.h>
 int lastRefresh;
 const static int refreshCycle = 500;
+TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
 
 WiFiMulti wifiMulti;
 
@@ -129,13 +133,15 @@ void setup() {
 
   tft.init();
   tft.setRotation(1);
-  tft.fillScreen(TFT_BLUE);
+  tft.fillScreen(HSL_BLUE);
   tft.setTextSize(2);
-  tft.setTextColor(TFT_WHITE, TFT_BLUE, true);
+  tft.setTextColor(TFT_WHITE, HSL_BLUE, true);
   tft.setCursor(0, 0);
   tft.setTextDatum(MC_DATUM);
   tft.setTextSize(2);
+  tft.setSwapBytes(true);
   delay(10);
+
   wifiMulti.addAP(SSID, WIFI_PASSWORD);
 #ifdef SSID2
   wifiMulti.addAP(SSID2, WIFI_PASSWORD2);
@@ -150,15 +156,17 @@ void loop() {
   if (millis() > (lastRefresh + refreshCycle)) {
     lastRefresh = millis();
     if (stoptimes[0].realtimeDeparture > 0) {
-      tft.setCursor(0,0);
-      tft.fillScreen(TFT_BLUE);
       struct tm timeinfo;
       if(!getLocalTime(&timeinfo)){
         Serial.println("No time available (yet)");
       }
       else {
+        tft.setCursor(MARGINS,MARGINS + (int)(bicycleHeight/2) - 8 );
+        //tft.fillScreen(HSL_BLUE);
         tft.println(&timeinfo, "%H:%M:%S");
-        for (size_t i = 0; i < 6; i++)
+        int timtableMarginY = MARGINS*2 + bicycleHeight;
+        int lineHeight = 16 + PADDING;
+        for (size_t i = 0; i < 4; i++)
         {
           tm departureDay;
           localtime_r(&stoptimes[i].day, &departureDay);
@@ -171,10 +179,15 @@ void loop() {
             int hours = (int)(stoptimes[i].realtimeDeparture / 3600);
             departureTime = (String) hours + ":" + (String)(int)((stoptimes[i].realtimeDeparture - hours * 3600) / 60);
           }
-          tft.println(departureTime + " " + stoptimes[i].route + " " + stoptimes[i].headsign);
+          tft.setCursor(MARGINS, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
+          tft.print(departureTime);
+          tft.setCursor(MARGINS + 80, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
+          tft.print(stoptimes[i].headsign);
+          //tft.println(departureTime + " " + stoptimes[i].route + " " + stoptimes[i].headsign);
           //tft.printf("%s %s\n", departureTime, stoptimes[i].route);
           //tft.printf("%d: %s %s\n", stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay(), stoptimes[i].route, stoptimes[i].headsign); //unicode characters create problems
         }
+        tft.pushImage(tft.width()-bicycleWidth-MARGINS,MARGINS, bicycleWidth, bicycleHeight, bicycle);
       }
     }
   }
