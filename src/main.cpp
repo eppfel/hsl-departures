@@ -38,6 +38,7 @@ struct stoptime_t
   const char* route;
 };
 stoptime_t stoptimes[NUM_STOPTIMES];
+int bikesAvailable;
 
 bool cmpfunc(stoptime_t a, stoptime_t b) { 
   if (a.day == b.day) {
@@ -77,7 +78,7 @@ void updateDepartureTimes() {
     http.addHeader("Content-Type",   "application/json");
 
     // send POST request
-    doc["query"] = "{ stop1: stop(id: \"HSL:2232238\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop2: stop(id: \"HSL:2232239\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop3: stop(id: \"HSL:2232228\") { name name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop4: stop(id: \"HSL:2232232\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } }";
+    doc["query"] = "{ stop1: stop(id: \"HSL:2232238\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop2: stop(id: \"HSL:2232239\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop3: stop(id: \"HSL:2232228\") { name name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop4: stop(id: \"HSL:2232232\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } bikes: bikeRentalStation(id:\"587\") {bikesAvailable} }";
     doc["variables"] = nullptr;
     String payload; //= "{\"query\": \"{stops {name}}\" }";
     serializeJson(doc, payload);
@@ -88,6 +89,7 @@ void updateDepartureTimes() {
       deserializeJson(doc, http.getString());
       serializeJson(doc["data"], Serial);
       Serial.println();
+      //JsonObject ddat = doc["data"];
 
       //Transpose incoming data into a list of departures
       for (size_t i = 0; i < NUM_STOPTIMES; i++)
@@ -107,6 +109,8 @@ void updateDepartureTimes() {
         //Serial.printf("%s: %s %s at %d\n",stopN, stoptimes[i].route, stoptimes[i].headsign, stoptimes[i].realtimeDeparture);
       }
       std::sort(std::begin(stoptimes), std::end(stoptimes), cmpfunc);
+
+      bikesAvailable = doc["data"]["bikes"]["bikesAvailable"];
 
     } else {
       Serial.print("[HTTP] Error: ");
@@ -187,7 +191,12 @@ void loop() {
           //tft.printf("%s %s\n", departureTime, stoptimes[i].route);
           //tft.printf("%d: %s %s\n", stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay(), stoptimes[i].route, stoptimes[i].headsign); //unicode characters create problems
         }
-        tft.pushImage(tft.width()-bicycleWidth-MARGINS,MARGINS, bicycleWidth, bicycleHeight, bicycle);
+
+        if (bikesAvailable > 0) {
+          tft.pushImage(tft.width()-bicycleWidth-MARGINS,MARGINS, bicycleWidth, bicycleHeight, bicycle);
+        } else {
+          tft.drawRect(tft.width()-bicycleWidth-MARGINS,MARGINS, bicycleWidth, bicycleHeight, HSL_BLUE);
+        }
       }
     }
   }
