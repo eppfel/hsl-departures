@@ -14,21 +14,21 @@
 const char* ntpServer1 = "pool.ntp.org";
 const char* ntpServer2 = "time.nist.gov";
 
-const char* time_zone = "EET-2EEST,M3.5.0/3,M10.5.0/4";  // TimeZone rule for Europe/Helsinki including daylight adjustment rules (optional)
+const char* time_zone = "EET-2EEST,M3.5.0/3,M10.5.0/4";  // TimeZone rule for Europe/Helsinki including daylight adjustment rules
 
 #define HSL_BLUE 0x0BDE
 #define MARGINS 6
 #define PADDING 5
 #include <hsl-bicycle.h>
-int lastRefresh;
 const static int refreshCycle = 500;
+unsigned long lastRefresh = 0;
 TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
 
 WiFiMulti wifiMulti;
 
-const static int updateCycle = 15;
-int lastUpdate = 0;
-#define NUM_STOPTIMES 8
+#define NUM_STOPTIMES 8 // this needs to corellate with the API request: currently 4 stations x 2 departures
+const static int updateCycle = 30;
+unsigned long lastUpdate = 0;
 struct stoptime_t
 {
   int stopId;
@@ -38,7 +38,8 @@ struct stoptime_t
   const char* route;
 };
 stoptime_t stoptimes[NUM_STOPTIMES];
-int bikesAvailable;
+int bikesAvailable = -1;
+bool dataAvailable = false;
 
 bool cmpfunc(stoptime_t a, stoptime_t b) { 
   if (a.day == b.day) {
@@ -70,26 +71,23 @@ void updateDepartureTimes() {
     HTTPClient http;
     StaticJsonDocument<2048> doc;
 
-    //client.setCACert(root_ca);
+    // send POST request to HSL API in graphql format. See https://digitransit.fi/en/developers/apis/1-routing-api/
     Serial.print("[HTTP] begin...\n");
     http.begin("https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql" );
-
-    // add necessary headers
     http.addHeader("Content-Type",   "application/json");
-
-    // send POST request
     doc["query"] = "{ stop1: stop(id: \"HSL:2232238\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop2: stop(id: \"HSL:2232239\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop3: stop(id: \"HSL:2232228\") { name name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop4: stop(id: \"HSL:2232232\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } bikes: bikeRentalStation(id:\"587\") {bikesAvailable} }";
     doc["variables"] = nullptr;
-    String payload; //= "{\"query\": \"{stops {name}}\" }";
+    String payload;
     serializeJson(doc, payload);
-    Serial.println(payload);
+    // Serial.println(payload);
 
     int response = http.POST(payload);
     if (response == HTTP_CODE_OK) {
+      dataAvailable = true;
+      Serial.print("[HTTP] Success!\n");
       deserializeJson(doc, http.getString());
-      serializeJson(doc["data"], Serial);
-      Serial.println();
-      //JsonObject ddat = doc["data"];
+      // serializeJson(doc["data"], Serial);
+      // Serial.println();
 
       //Transpose incoming data into a list of departures
       for (size_t i = 0; i < NUM_STOPTIMES; i++)
@@ -102,11 +100,10 @@ void updateDepartureTimes() {
         stoptimes[i].headsign = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["tripHeadsign"];
         stoptimes[i].route = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["routeShortName"];
         stoptimes[i].day = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["serviceDay"];
-        Serial.println(stopN);
-        Serial.println(stoptimes[i].realtimeDeparture);
-        Serial.println(stoptimes[i].headsign);
-        Serial.println(stoptimes[i].route);
-        //Serial.printf("%s: %s %s at %d\n",stopN, stoptimes[i].route, stoptimes[i].headsign, stoptimes[i].realtimeDeparture);
+        // Serial.println(stopN);
+        // Serial.println(stoptimes[i].realtimeDeparture);
+        // Serial.println(stoptimes[i].headsign);
+        // Serial.println(stoptimes[i].route);
       }
       std::sort(std::begin(stoptimes), std::end(stoptimes), cmpfunc);
 
@@ -115,7 +112,7 @@ void updateDepartureTimes() {
     } else {
       Serial.print("[HTTP] Error: ");
       Serial.println(response);
-      tft.println("Error!");
+      tft.println("Error requesting data!");
       payload = http.getString();
       Serial.println(payload);
     }
@@ -140,9 +137,7 @@ void setup() {
   tft.fillScreen(HSL_BLUE);
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, HSL_BLUE, true);
-  tft.setCursor(0, 0);
-  tft.setTextDatum(MC_DATUM);
-  tft.setTextSize(2);
+  tft.setCursor(MARGINS, MARGINS);
   tft.setSwapBytes(true);
   delay(10);
 
@@ -159,17 +154,18 @@ void loop() {
   }
   if (millis() > (lastRefresh + refreshCycle)) {
     lastRefresh = millis();
-    if (stoptimes[0].realtimeDeparture > 0) {
+    if (dataAvailable) {
       struct tm timeinfo;
       if(!getLocalTime(&timeinfo)){
         Serial.println("No time available (yet)");
       }
       else {
         tft.setCursor(MARGINS,MARGINS + (int)(bicycleHeight/2) - 8 );
-        //tft.fillScreen(HSL_BLUE);
         tft.println(&timeinfo, "%H:%M:%S");
+
         int timtableMarginY = MARGINS*2 + bicycleHeight;
         int lineHeight = 16 + PADDING;
+        int headsignColumn = 80;
         for (size_t i = 0; i < 4; i++)
         {
           tm departureDay;
@@ -185,11 +181,9 @@ void loop() {
           }
           tft.setCursor(MARGINS, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
           tft.print(departureTime);
-          tft.setCursor(MARGINS + 80, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
-          tft.print(stoptimes[i].headsign);
-          //tft.println(departureTime + " " + stoptimes[i].route + " " + stoptimes[i].headsign);
-          //tft.printf("%s %s\n", departureTime, stoptimes[i].route);
-          //tft.printf("%d: %s %s\n", stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay(), stoptimes[i].route, stoptimes[i].headsign); //unicode characters create problems
+          int xwidth = tft.drawString(stoptimes[i].headsign, MARGINS + headsignColumn, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
+          // use the width of the headsign text and draw a rect for the rest of the line to clear any overhanging text
+          tft.fillRect(MARGINS + headsignColumn + xwidth, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight, tft.width() - (MARGINS + headsignColumn + xwidth), lineHeight, HSL_BLUE);
         }
 
         if (bikesAvailable > 0) {
