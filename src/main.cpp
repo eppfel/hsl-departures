@@ -3,11 +3,10 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <WiFiMulti.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include "time.h"
 #include "sntp.h"
 #include <algorithm>
+#include <hsl-request.h>
 
 #include <credentials.h>
 
@@ -26,26 +25,9 @@ TFT_eSPI tft = TFT_eSPI(135, 240); // Invoke custom library
 
 WiFiMulti wifiMulti;
 
-#define NUM_STOPTIMES 8 // this needs to corellate with the API request: currently 4 stations x 2 departures
-const static int updateCycle = 30;
-unsigned long lastUpdate = 0;
-struct stoptime_t
-{
-  int stopId;
-  time_t day;
-  int realtimeDeparture;
-  const char* headsign;
-  const char* route;
-};
-stoptime_t stoptimes[NUM_STOPTIMES];
-int bikesAvailable = -1;
-bool dataAvailable = false;
-
-bool cmpfunc(stoptime_t a, stoptime_t b) { 
-  if (a.day == b.day) {
-    return a.realtimeDeparture < b.realtimeDeparture;
-  }
-  return a.day < b.day;
+String leadingZero(int d) {
+  if (d < 10) return "0" + (String) d;
+  return (String) d;
 }
 
 int getLocalTimeOfTheDay()
@@ -64,65 +46,7 @@ void timeavailable(struct timeval *t)
   Serial.printf("Got time adjustment from NTP!");
 }
 
-void updateDepartureTimes() {
-  // check departure times frok HSL API and update list of upcoming departures
-  if((wifiMulti.run() == WL_CONNECTED)) {
 
-    HTTPClient http;
-    StaticJsonDocument<2048> doc;
-
-    // send POST request to HSL API in graphql format. See https://digitransit.fi/en/developers/apis/1-routing-api/
-    Serial.print("[HTTP] begin...\n");
-    http.begin("https://api.digitransit.fi/routing/v1/routers/hsl/index/graphql" );
-    http.addHeader("Content-Type",   "application/json");
-    doc["query"] = "{ stop1: stop(id: \"HSL:2232238\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop2: stop(id: \"HSL:2232239\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop3: stop(id: \"HSL:2232228\") { name name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } stop4: stop(id: \"HSL:2232232\") { name stoptimesWithoutPatterns(numberOfDepartures: 2) { realtimeDeparture serviceDay trip { routeShortName tripHeadsign } } } bikes: bikeRentalStation(id:\"587\") {bikesAvailable} }";
-    doc["variables"] = nullptr;
-    String payload;
-    serializeJson(doc, payload);
-    // Serial.println(payload);
-
-    int response = http.POST(payload);
-    if (response == HTTP_CODE_OK) {
-      dataAvailable = true;
-      Serial.print("[HTTP] Success!\n");
-      deserializeJson(doc, http.getString());
-      // serializeJson(doc["data"], Serial);
-      // Serial.println();
-
-      //Transpose incoming data into a list of departures
-      for (size_t i = 0; i < NUM_STOPTIMES; i++)
-      {
-        int stop = (int) i / 2 + 1;
-        char stopN[6];
-        snprintf(stopN, 6, "stop%d", stop);
-        stoptimes[i].stopId = stop;
-        stoptimes[i].realtimeDeparture = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["realtimeDeparture"];
-        stoptimes[i].headsign = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["tripHeadsign"];
-        stoptimes[i].route = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["trip"]["routeShortName"];
-        stoptimes[i].day = doc["data"][stopN]["stoptimesWithoutPatterns"][i%2]["serviceDay"];
-        // Serial.println(stopN);
-        // Serial.println(stoptimes[i].realtimeDeparture);
-        // Serial.println(stoptimes[i].headsign);
-        // Serial.println(stoptimes[i].route);
-      }
-      std::sort(std::begin(stoptimes), std::end(stoptimes), cmpfunc);
-
-      bikesAvailable = doc["data"]["bikes"]["bikesAvailable"];
-
-    } else {
-      Serial.print("[HTTP] Error: ");
-      Serial.println(response);
-      tft.println("Error requesting data!");
-      payload = http.getString();
-      Serial.println(payload);
-    }
-
-    http.end();
-  } else {
-    Serial.println("Not connected!");
-    tft.println("Not connected!");
-  }
-}
 
 void setup() {
   Serial.begin(115200);
@@ -148,10 +72,7 @@ void setup() {
 }
 
 void loop() {
-  if (millis() > (lastUpdate + updateCycle*1000)) {
-    lastUpdate = millis();
-    updateDepartureTimes();
-  }
+  updateDepartureTimes();
   if (millis() > (lastRefresh + refreshCycle)) {
     lastRefresh = millis();
     if (dataAvailable) {
@@ -177,7 +98,7 @@ void loop() {
             departureTime = (String)(int)(timeUntilDeparture / 60) + " min";
           } else {
             int hours = (int)(stoptimes[i].realtimeDeparture / 3600);
-            departureTime = (String) hours + ":" + (String)(int)((stoptimes[i].realtimeDeparture - hours * 3600) / 60);
+            departureTime = leadingZero(hours % 24) + ":" + leadingZero((int)((stoptimes[i].realtimeDeparture - hours * 3600) / 60));
           }
           tft.setCursor(MARGINS, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
           tft.print(departureTime);
