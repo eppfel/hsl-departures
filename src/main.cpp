@@ -7,13 +7,19 @@
 #include "sntp.h"
 #include <algorithm>
 #include <hsl-request.h>
+#include <Button2.h>
 
 #include <credentials.h>
 
 const char* ntpServer1 = "pool.ntp.org";
 const char* ntpServer2 = "time.nist.gov";
-
 const char* time_zone = "EET-2EEST,M3.5.0/3,M10.5.0/4";  // TimeZone rule for Europe/Helsinki including daylight adjustment rules
+
+#define BUTTON_1            35
+#define BUTTON_2            0
+
+Button2 btn1(BUTTON_1);
+// Button2 btn2(BUTTON_2);
 
 #define HSL_BLUE 0x0BDE
 #define MARGINS 6
@@ -46,7 +52,13 @@ void timeavailable(struct timeval *t)
   Serial.printf("Got time adjustment from NTP!");
 }
 
-
+//! Long time delay, it is recommended to use shallow sleep, which can effectively reduce the current consumption
+void espDelay(int ms)
+{
+    esp_sleep_enable_timer_wakeup(ms * 1000);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    esp_light_sleep_start();
+}
 
 void setup() {
   Serial.begin(115200);
@@ -57,13 +69,34 @@ void setup() {
   configTzTime(time_zone, ntpServer1, ntpServer2);
 
   tft.init();
-  tft.setRotation(1);
+  tft.setRotation(3);
   tft.fillScreen(HSL_BLUE);
   tft.setTextSize(2);
   tft.setTextColor(TFT_WHITE, HSL_BLUE, true);
   tft.setCursor(MARGINS, MARGINS);
   tft.setSwapBytes(true);
   delay(10);
+
+
+  btn1.setLongClickHandler([](Button2 & b) {
+      // btnCick = false;
+      int r = digitalRead(TFT_BL);
+      tft.fillScreen(HSL_BLUE);
+      tft.setTextColor(TFT_WHITE, HSL_BLUE);
+      tft.setTextDatum(MC_DATUM);
+      tft.drawString("Press again to wake up",  tft.width() / 2, tft.height() / 2 );
+      espDelay(6000);
+      digitalWrite(TFT_BL, !r);
+
+      tft.writecommand(TFT_DISPOFF);
+      tft.writecommand(TFT_SLPIN);
+      //After using light sleep, you need to disable timer wake, because here use external IO port to wake up
+      esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+      // esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
+      esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, 0);
+      delay(200);
+      esp_deep_sleep_start();
+  });
 
   wifiMulti.addAP(SSID, WIFI_PASSWORD);
 #ifdef SSID2
@@ -72,6 +105,7 @@ void setup() {
 }
 
 void loop() {
+  btn1.loop();
   updateDepartureTimes();
   if (millis() > (lastRefresh + refreshCycle)) {
     lastRefresh = millis();
