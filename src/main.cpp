@@ -8,8 +8,11 @@
 #include <algorithm>
 #include <hsl-request.h>
 #include <Button2.h>
-
 #include <credentials.h>
+#include "NotoSansBold15.h"
+
+// The font names are arrays references, thus must NOT be in quotes ""
+#define AA_FONT_SMALL NotoSansBold15
 
 const char* ntpServer1 = "pool.ntp.org";
 const char* ntpServer2 = "time.nist.gov";
@@ -75,8 +78,10 @@ void setup() {
   tft.setTextColor(TFT_WHITE, HSL_BLUE, true);
   tft.setCursor(MARGINS, MARGINS);
   tft.setSwapBytes(true);
+  tft.loadFont(AA_FONT_SMALL); // Muste load the font first
   delay(10);
 
+  tft.print("Starting up...");
 
   btn1.setLongClickHandler([](Button2 & b) {
       // btnCick = false;
@@ -118,9 +123,10 @@ void loop() {
         tft.setCursor(MARGINS,MARGINS + (int)(bicycleHeight/2) - 8 );
         tft.println(&timeinfo, "%H:%M:%S");
 
-        int timtableMarginY = MARGINS*2 + bicycleHeight;
+        int timetableMarginY = MARGINS*2 + bicycleHeight + PADDING;
         int lineHeight = 16 + PADDING;
-        int headsignColumn = 80;
+        int routeX = MARGINS + 55;
+        int headsignX = routeX + 45;
         for (size_t i = 0; i < 4; i++)
         {
           tm departureDay;
@@ -128,17 +134,20 @@ void loop() {
           int timeUntilDeparture = stoptimes[i].realtimeDeparture - getLocalTimeOfTheDay();
           if (departureDay.tm_yday != timeinfo.tm_yday) timeUntilDeparture += 86400;
           String departureTime;
-          if (timeUntilDeparture < 600) {
+          if (timeUntilDeparture % 86400 < 600) {
             departureTime = (String)(int)(timeUntilDeparture / 60) + " min";
           } else {
             int hours = (int)(stoptimes[i].realtimeDeparture / 3600);
             departureTime = leadingZero(hours % 24) + ":" + leadingZero((int)((stoptimes[i].realtimeDeparture - hours * 3600) / 60));
           }
-          tft.setCursor(MARGINS, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
-          tft.print(departureTime);
-          int xwidth = tft.drawString(stoptimes[i].headsign, MARGINS + headsignColumn, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight);
-          // use the width of the headsign text and draw a rect for the rest of the line to clear any overhanging text
-          tft.fillRect(MARGINS + headsignColumn + xwidth, MARGINS*2 + bicycleHeight + PADDING + i * lineHeight, tft.width() - (MARGINS + headsignColumn + xwidth), lineHeight, HSL_BLUE);
+          int xwidth = tft.drawString(departureTime, MARGINS, timetableMarginY + i * lineHeight);
+          tft.fillRect(MARGINS + xwidth, timetableMarginY + i * lineHeight, routeX - (MARGINS + xwidth), lineHeight, HSL_BLUE); // use the width of the headsign text and draw a rect for the rest of the line to clear any overhanging text
+
+          xwidth = tft.drawString(stoptimes[i].route, routeX, timetableMarginY + i * lineHeight);
+          tft.fillRect(routeX + xwidth, timetableMarginY + i * lineHeight, headsignX - routeX - xwidth, lineHeight, HSL_BLUE);
+          
+          xwidth = tft.drawString(stoptimes[i].headsign, headsignX, timetableMarginY + i * lineHeight);
+          tft.fillRect(headsignX + xwidth, timetableMarginY + i * lineHeight, tft.width() - headsignX - xwidth, lineHeight, HSL_BLUE);
         }
 
         if (bikesAvailable > 0) {
